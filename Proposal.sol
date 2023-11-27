@@ -67,7 +67,7 @@ contract Proposal is Params {
     event LogSetUnpassed(address indexed val, uint256 time);
 
     modifier onlyValidator() {
-        require(validators.isActiveValidator(msg.sender), "Validator only");
+        require(validators.isActiveValidator(tx.origin), "Validator only");
         _;
     }
 
@@ -91,19 +91,19 @@ contract Proposal is Params {
 
         // generate proposal id
         bytes32 id = keccak256(
-            abi.encodePacked(msg.sender, dst, details, block.timestamp)
+            abi.encodePacked(tx.origin, dst, details, block.timestamp)
         );
         require(bytes(details).length <= 3000, "Details too long");
         require(proposals[id].createTime == 0, "Proposal already exists");
 
         ProposalInfo memory proposal;
-        proposal.proposer = msg.sender;
+        proposal.proposer = tx.origin;
         proposal.dst = dst;
         proposal.details = details;
         proposal.createTime = block.timestamp;
 
         proposals[id] = proposal;
-        emit LogCreateProposal(id, msg.sender, dst, block.timestamp);
+        emit LogCreateProposal(id, tx.origin, dst, block.timestamp);
         return true;
     }
 
@@ -114,7 +114,7 @@ contract Proposal is Params {
     {
         require(proposals[id].createTime != 0, "Proposal not exist");
         require(
-            votes[msg.sender][id].voteTime == 0,
+            votes[tx.origin][id].voteTime == 0,
             "You can't vote for a proposal twice"
         );
         require(
@@ -122,10 +122,10 @@ contract Proposal is Params {
             "Proposal expired"
         );
 
-        votes[msg.sender][id].voteTime = block.timestamp;
-        votes[msg.sender][id].voter = msg.sender;
-        votes[msg.sender][id].auth = auth;
-        emit LogVote(id, msg.sender, auth, block.timestamp);
+        votes[tx.origin][id].voteTime = block.timestamp;
+        votes[tx.origin][id].voter = tx.origin;
+        votes[tx.origin][id].auth = auth;
+        emit LogVote(id, tx.origin, auth, block.timestamp);
 
         // update dst status if proposal is passed
         if (auth) {

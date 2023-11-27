@@ -15,9 +15,9 @@ contract Params {
     // System params
     uint16 public constant MaxValidators = 500;
     // Validator have to wait StakingLockPeriod blocks to withdraw staking
-    uint64 public constant StakingLockPeriod = 86400;
+    uint64 public constant StakingLockPeriod = 20;   //86400
     // Validator have to wait WithdrawProfitPeriod blocks to withdraw his profits
-    uint64 public constant WithdrawProfitPeriod = 28800;
+    uint64 public constant WithdrawProfitPeriod = 10;    //28800
     uint256 public constant MinimalStakingCoin = 34 ether;
     // minimum initial staking to become a validator
     uint256 public constant minimumValidatorStaking = 1000000 ether;
@@ -34,7 +34,7 @@ contract Params {
 
 
     modifier onlyMiner() {
-        require(msg.sender == block.coinbase, "Miner only");
+        require(tx.origin == block.coinbase, "Miner only");
         _;
     }
 
@@ -49,7 +49,7 @@ contract Params {
     }
 
     modifier onlyPunishContract() {
-        require(msg.sender == PunishContractAddr, "Punish contract only");
+        require(tx.origin == PunishContractAddr, "Punish contract only");
         _;
     }
 
@@ -60,14 +60,14 @@ contract Params {
 
     modifier onlyValidatorsContract() {
         require(
-            msg.sender == ValidatorContractAddr,
+            tx.origin == ValidatorContractAddr,
             "Validators contract only"
         );
         _;
     }
 
     modifier onlyProposalContract() {
-        require(msg.sender == ProposalAddr, "Proposal contract only");
+        require(tx.origin == ProposalAddr, "Proposal contract only");
         _;
     }
 }
