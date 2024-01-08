@@ -10,7 +10,7 @@ contract Proposal is Params {
 
     // record
     mapping(address => bool) public pass;
-
+    mapping(address => bool) public lastProposalActive;
     struct ProposalInfo {
         // who propose this proposal
         address proposer;
@@ -67,7 +67,7 @@ contract Proposal is Params {
     event LogSetUnpassed(address indexed val, uint256 time);
 
     modifier onlyValidator() {
-        require(validators.isActiveValidator(tx.origin), "Validator only");
+        require(validators.isActiveValidator(msg.sender), "Validator only");
         _;
     }
 
@@ -87,23 +87,23 @@ contract Proposal is Params {
         external
         returns (bool)
     {
-        require(!pass[dst], "Dst already passed, You can start staking"); 
-
+        //require(!pass[dst], "Dst already passed, You can start staking"); 
+        require(!lastProposalActive[dst], "Already active proposal");
         // generate proposal id
         bytes32 id = keccak256(
-            abi.encodePacked(tx.origin, dst, details, block.timestamp)
+            abi.encodePacked(msg.sender, dst, details, block.timestamp)
         );
         require(bytes(details).length <= 3000, "Details too long");
         require(proposals[id].createTime == 0, "Proposal already exists");
 
         ProposalInfo memory proposal;
-        proposal.proposer = tx.origin;
+        proposal.proposer = msg.sender;
         proposal.dst = dst;
         proposal.details = details;
         proposal.createTime = block.timestamp;
-
+        lastProposalActive[dst] = true;
         proposals[id] = proposal;
-        emit LogCreateProposal(id, tx.origin, dst, block.timestamp);
+        emit LogCreateProposal(id, msg.sender, dst, block.timestamp);
         return true;
     }
 
@@ -114,7 +114,7 @@ contract Proposal is Params {
     {
         require(proposals[id].createTime != 0, "Proposal not exist");
         require(
-            votes[tx.origin][id].voteTime == 0,
+            votes[msg.sender][id].voteTime == 0,
             "You can't vote for a proposal twice"
         );
         require(
@@ -122,10 +122,10 @@ contract Proposal is Params {
             "Proposal expired"
         );
 
-        votes[tx.origin][id].voteTime = block.timestamp;
-        votes[tx.origin][id].voter = tx.origin;
-        votes[tx.origin][id].auth = auth;
-        emit LogVote(id, tx.origin, auth, block.timestamp);
+        votes[msg.sender][id].voteTime = block.timestamp;
+        votes[msg.sender][id].voter = msg.sender;
+        votes[msg.sender][id].auth = auth;
+        emit LogVote(id, msg.sender, auth, block.timestamp);
 
         // update dst status if proposal is passed
         if (auth) {
@@ -134,7 +134,8 @@ contract Proposal is Params {
             proposals[id].reject = proposals[id].reject + 1;
         }
 
-        if (pass[proposals[id].dst] || proposals[id].resultExist) {
+        //if (pass[proposals[id].dst] || proposals[id].resultExist) {
+        if(!lastProposalActive[proposals[id].dst] || proposals[id].resultExist) {
             // do nothing if dst already passed or rejected.
             return true;
         }
@@ -144,10 +145,10 @@ contract Proposal is Params {
             validators.getActiveValidators().length / 2 + 1
         ) {
             pass[proposals[id].dst] = true;
-            proposals[id].resultExist = true;
-
+            proposals[id].resultExist = true;            
             // try to reactive validator if it isn't the first time
             validators.tryReactive(proposals[id].dst);
+            lastProposalActive[proposals[id].dst] = false;
             emit LogPassProposal(id, proposals[id].dst, block.timestamp);
 
             return true;
@@ -171,7 +172,7 @@ contract Proposal is Params {
     {
         // set validator unpass
         pass[val] = false;
-
+        lastProposalActive[val] = true;
         emit LogSetUnpassed(val, block.timestamp);
         return true;
     }

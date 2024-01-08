@@ -40,7 +40,7 @@ contract Punish is Params {
         validators = Validators(ValidatorContractAddr);
         punishThreshold = 48;
         removeThreshold = 96;
-        decreaseRate = 48;
+        decreaseRate = 48; 
 
         initialized = true;
     }

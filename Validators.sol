@@ -34,7 +34,7 @@ contract Validators is Params {
         Description description;
         uint256 hbIncoming;
         uint256 totalJailedHB;
-        uint256 lastWithdrawProfitsBlock;
+      //  uint256 lastWithdrawProfitsBlock;
         // Address list of user who has staked for this validator
         address[] stakers;
     }
@@ -209,11 +209,17 @@ contract Validators is Params {
 
         Validator storage valInfo = validatorInfo[validator];
         // The staked coins of validator must >= MinimalStakingCoin
-        require(
-            valInfo.coins + (staking) >= MinimalStakingCoin,
-            "Staking coins not enough"
-        );
-
+        if(staker == validator){
+            require(
+                valInfo.coins + (staking) >= MinimalStakingCoin,
+                "Staking coins not enough"
+            );
+        }
+        else
+        {
+            require(staking >= MinimalStakingCoin,
+            "Staking coins not enough");
+        }
         // stake at first time to this valiadtor
         if (staked[staker][validator].coins == 0) {
             // add staker to validator's record list
@@ -311,7 +317,7 @@ contract Validators is Params {
         if (validatorInfo[validator].status == Status.Jailed) {
             require(punish.cleanPunishRecord(validator), "clean failed");
         }
-        validatorInfo[validator].status = Status.Created;
+        validatorInfo[validator].status = Status.Staked;
 
         emit LogReactive(validator, block.timestamp);
 
@@ -377,22 +383,20 @@ contract Validators is Params {
         return true;
     }
 
-    function withdrawStakingReward(address validator) internal returns(bool)
-    {   
-        if(stakeTime[tx.origin][validator] > 0){
-            // require(stakeTime[tx.origin][validator] > 0 , "nothing staked");
-            StakingInfo storage stakingInfo = staked[tx.origin][validator];
-            uint validPercent = reflectionPercentSum[validator][lastRewardTime[validator]] - reflectionPercentSum[validator][stakeTime[tx.origin][validator]];
-            if(validPercent > 0)
-            {
-                stakeTime[tx.origin][validator] = lastRewardTime[validator];
-                uint reward = stakingInfo.coins * validPercent / 100000000000000000000  ;
-                payable(tx.origin).transfer(reward);
-                emit withdrawStakingRewardEv(tx.origin, validator, reward, block.timestamp);
-            }
-            return true;
+    function withdrawStakingReward(address validator) public returns(bool)
+    {
+        require(stakeTime[tx.origin][validator] > 0 , "nothing staked");
+        //require(stakeTime[tx.origin][validator] < lastRewardTime[validator], "no reward yet");
+        StakingInfo storage stakingInfo = staked[tx.origin][validator];
+        uint validPercent = reflectionPercentSum[validator][lastRewardTime[validator]] - reflectionPercentSum[validator][stakeTime[tx.origin][validator]];
+        if(validPercent > 0)
+        {
+            stakeTime[tx.origin][validator] = lastRewardTime[validator];
+            uint reward = stakingInfo.coins * validPercent / 100000000000000000000  ;
+            payable(tx.origin).transfer(reward);
+            emit withdrawStakingRewardEv(tx.origin, validator, reward, block.timestamp);
         }
-        return false;
+        return true;
     }
 
     function withdrawStaking(address validator) external returns (bool) {
@@ -422,43 +426,44 @@ contract Validators is Params {
     }
 
     // feeAddr can withdraw profits of it's validator
-    function withdrawProfits(address validator) internal returns (bool) {
+    function withdrawProfits(address validator) external returns (bool) {
         address payable feeAddr = payable(tx.origin);
-        if(
-            validatorInfo[validator].status != Status.NotExist &&
-            validatorInfo[validator].feeAddr == feeAddr && 
-            validatorInfo[validator].lastWithdrawProfitsBlock + WithdrawProfitPeriod <= block.number)
-        {
-            uint256 hbIncoming = validatorInfo[validator].hbIncoming;
-            require(hbIncoming > 0, "You don't have any profits");
+        require(
+            validatorInfo[validator].status != Status.NotExist,
+            "Validator not exist"
+        );
+        require(
+            validatorInfo[validator].feeAddr == feeAddr,
+            "You are not the fee receiver of this validator"
+        );
+        /*require(
+            validatorInfo[validator].lastWithdrawProfitsBlock +
+                WithdrawProfitPeriod <=
+                block.number,
+            "You must wait enough blocks to withdraw your profits after latest withdraw of this validator"
+        );*/
+        uint256 hbIncoming = validatorInfo[validator].hbIncoming;
+        require(hbIncoming > 0, "You don't have any profits");
 
-            // update info
-            validatorInfo[validator].hbIncoming = 0;
-            validatorInfo[validator].lastWithdrawProfitsBlock = block.number;
+        // update info
+        validatorInfo[validator].hbIncoming = 0;
+       // validatorInfo[validator].lastWithdrawProfitsBlock = block.number;
 
-            // send profits to fee address
-            if (hbIncoming > 0) {
-                feeAddr.transfer(hbIncoming);
-            }
-
-            emit LogWithdrawProfits(
-                validator,
-                feeAddr,
-                hbIncoming,
-                block.timestamp
-            );
-
-            return true;
+        // send profits to fee address
+        if (hbIncoming > 0) {
+            feeAddr.transfer(hbIncoming);
         }
-        return false;
+        withdrawStakingReward(validator);
+        emit LogWithdrawProfits(
+            validator,
+            feeAddr,
+            hbIncoming,
+            block.timestamp
+        );
+
+        return true;
     }
 
-    /*
-    *Merged withdraw PROFIT & STAKE REWARD
-    */
-    function mergedWithdrawRewards(address validator) external returns(bool status){
-        status = (withdrawStakingReward(validator) || withdrawProfits(validator)) ? true : false;
-    }
 
     // distributeBlockReward distributes block reward to all active validators
     function distributeBlockReward(address[] memory _to, uint64[] memory _gass)
@@ -589,7 +594,7 @@ contract Validators is Params {
             uint256,
             uint256,
             uint256,
-            uint256,
+            //uint256,
             address[] memory
         )
     {
@@ -601,7 +606,7 @@ contract Validators is Params {
             v.coins,
             v.hbIncoming,
             v.totalJailedHB,
-            v.lastWithdrawProfitsBlock,
+          //  v.lastWithdrawProfitsBlock,
             v.stakers
         );
     }
@@ -783,7 +788,6 @@ contract Validators is Params {
         if (totalRewardStake == 0) {
             uint256 per = totalReward / (rewardValsLen);
             remain = totalReward - (per * rewardValsLen);
-
             for (uint256 i = 0; i < currentValidatorSet.length; i++) {
                 address val = currentValidatorSet[i];
                 if (
@@ -866,15 +870,15 @@ contract Validators is Params {
         }
     }
     
-    function viewStakeReward(address _staker, address _validator) public view returns(uint256 merged){
-        uint256 hbIncoming = validatorInfo[_validator].hbIncoming;
-        merged = merged + hbIncoming;
-        uint validPercent = reflectionPercentSum[_validator][lastRewardTime[_validator]] - reflectionPercentSum[_validator][stakeTime[_staker][_validator]];
-        if(validPercent > 0)
-        {
-            StakingInfo memory stakingInfo = staked[_staker][_validator];
-            merged = merged + (stakingInfo.coins * validPercent / 100000000000000000000);
-
+    function viewStakeReward(address _staker, address _validator) public view returns(uint256){
+        if(stakeTime[_staker][_validator] > 0){
+            uint validPercent = reflectionPercentSum[_validator][lastRewardTime[_validator]] - reflectionPercentSum[_validator][stakeTime[_staker][_validator]];
+            if(validPercent > 0)
+            {
+                StakingInfo memory stakingInfo = staked[_staker][_validator];
+                return stakingInfo.coins * validPercent / 100000000000000000000  ;
+            }
         }
+        return 0;
     }
 }
